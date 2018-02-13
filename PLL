@@ -1,0 +1,231 @@
+#include <SoftwareSerial.h>
+#include <Wire.h>
+//#include <ArduinoJson.h>
+#include "DFRobot_SHT20.h"
+DFRobot_SHT20    sht20;
+SoftwareSerial mySerial1(10, 11); // serial ports RX, TX
+SoftwareSerial SIM800L(8, 7);      // serial ports RX, TX
+boolean ShowSerialData();
+int gsmEnPin = 4 ; //GSM RESET PIN
+void sendDataToServer();
+String PM, PMA ;
+String humidity, temprature;
+float temp, humid;
+//input byte variables
+int inputHigh = 0;
+int inputLow = 0;
+//variable to caclulate checksum input variables
+uint16_t inputChecksum = 0;
+//sensor variables
+uint16_t concPM1_0_CF1;
+uint16_t concPM2_5_CF1;
+uint16_t concPM10_0_CF1;
+uint16_t concPM1_0_amb;
+uint16_t concPM2_5_amb;
+uint16_t concPM10_0_amb;
+uint16_t rawGt0_3um;
+uint16_t rawGt0_5um;
+uint16_t rawGt1_0um;
+uint16_t rawGt2_5um;
+uint16_t rawGt5_0um;
+uint16_t rawGt10_0um;
+uint8_t version;
+uint8_t errorCode;
+uint16_t checksum;
+
+//:::::::::::::::::::::::::://
+//::::::::::SETUP::::::::::://
+//:::::::::::::::::::::::::://
+void setup() {
+  //root["deviceId"] = deviceId;
+ // pinMode(pmPinEn,OUTPUT);
+ //digitalWrite(pmPinEn,HIGH);
+  pinMode(gsmEnPin,OUTPUT);
+  digitalWrite(gsmEnPin,HIGH);
+  delay(8000);
+  sht20.initSHT20();   // Init SHT20 Sensor
+  delay(100);
+  sht20.checkSHT20();
+  SIM800L.begin(9600);  /* Define baud rate for software serial communication */
+  Serial.begin(9600);
+  mySerial1.begin(9600);
+  Serial.println("OOmi Yabnt L gazma");
+  //while (!Serial) {
+  //}
+ 
+  //while (!mySerial1) {
+ // }
+  //while (mySerial1.read() != -1) {}; //clear buffer
+}
+
+
+//:::::::::::::::::::::::::://
+//:::::::PM7003Sensor::::::://
+//:::::::::::::::::::::::::://
+bool pms7003ReadData() {
+  if (mySerial1.available() < 32) {
+    if (mySerial1.available() == 0) {
+      delay(150);
+      return false;
+    };
+    if (mySerial1.available() > 16) {
+      delay(100);
+      return false ;
+    };
+    if (mySerial1.available() > 0) {
+      delay(300);
+      return false ;
+    };
+    delay(100);
+    return false;
+  }
+  if (mySerial1.read() != 0x42) return false;
+  if (mySerial1.read() != 0x4D) return false ;
+  inputChecksum = 0x42 + 0x4D;
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  if (inputHigh != 0x00) return;
+  if (inputLow != 0x1c) return;
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  concPM1_0_CF1 = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  concPM2_5_CF1 = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  concPM10_0_CF1 = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  concPM1_0_amb = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  concPM2_5_amb = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  concPM10_0_amb = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  rawGt0_3um = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  rawGt0_5um = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  rawGt1_0um = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  rawGt2_5um = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  rawGt5_0um = inputLow + (inputHigh << 8);
+  inputHigh = mySerial1.read();
+  inputLow = mySerial1.read();
+  inputChecksum += inputHigh + inputLow;
+  rawGt10_0um = inputLow + (inputHigh << 8);
+  inputLow = mySerial1.read();
+  inputChecksum += inputLow;
+  version = inputLow;
+  inputLow = mySerial1.read();
+  inputChecksum += inputLow;
+  errorCode = inputLow;
+  if (errorCode != 0) {
+    Serial.print("error: ");
+    Serial.print(errorCode);
+    return false;
+  }
+  Serial.print("PM2.5a: ");
+  Serial.println(concPM2_5_amb);
+  PMA= concPM2_5_amb;
+  delay(700); // higher will get you checksum errors
+  return true;
+}
+
+
+//::::::::::::::::::::::::::::::::://
+//::::::::::ENDLESS LOOP::::::::::://
+//::::::::::::::::::::::::::::::::://
+void loop () {
+  if (pms7003ReadData()) {
+    //digitalWrite(pmPinEn,LOW);
+    humid = sht20.readHumidity();           // Read Humidity
+    temp = sht20.readTemperature();        // Read Temperature
+    humidity = String(humid, 2);
+    temprature = String(temp, 2);
+    Serial.print("Humidity : " + humidity);
+    Serial.println(" Temprature : " + temprature);
+    Serial.println();
+    Serial.println("Sending Data to server..");
+    sendDataToServer();
+    Serial.println("wait 3 mins..");
+    delay(60000);
+    Serial.println("wait 2 mins..");
+    delay(60000);
+    Serial.println("wait 1 mins..");
+    delay(15000);
+   // digitalWrite(pmPinEn,HIGH);
+    delay(45000);
+    Serial.println("wait 0 mins..");
+  }
+}
+
+
+//:::::::::::::::::::::::::::::::::::::::://
+//::::::::::SEND DATA TO SERVER::::::::::://
+//:::::::::::::::::::::::::::::::::::::::://
+void sendDataToServer() {
+  Serial.println("AT");
+  SIM800L.println("AT"); /* Check Communication */
+  delay(5000);
+  Serial.println("AT+CGATT=1");
+  SIM800L.println("AT+CGATT=1"); /* Attach to GPRS Service */
+  delay(6000);
+  Serial.println("AT+CREG?");
+  SIM800L.println("AT+CREG?"); /* Network registration status */
+  delay(5000);
+  Serial.println("AT+CIPMUX=0");
+  SIM800L.println("AT+CIPMUX=0");  /* Single TCP/IP connection mode */
+  delay(5000);
+  Serial.println("AT+CGATT?\\r\\n");
+  SIM800L.println("AT+CGATT?");  /* Attached to or detached from GPRS service */
+  delay(5000);
+  Serial.println("AT+CSTT=\"www\",\"\",\"\"\\r\\n");
+  SIM800L.println("AT+CSTT=\"www\",\"\",\"\""); /* Start task and set APN */
+  delay(5000);
+  Serial.println("AT+CIICR");
+  SIM800L.println("AT+CIICR"); /* Bring up wireless connection with GPRS */
+  delay(5000);
+  Serial.println("AT+CIFSR");
+  SIM800L.println("AT+CIFSR"); /* Get local IP address */
+  delay(6000);
+  Serial.println("AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",\"80\"\\r\\n");
+  //SIM800L.println("AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",\"80\"");  /* Start up TCP connection */
+  SIM800L.println("AT+CIPSTART=\"TCP\",\"api.thingspeak.com\",80");  /* Start up TCP connection */
+  delay(5000);
+  Serial.println("AT+CIPSEND");
+  SIM800L.println("AT+CIPSEND"); /* Send data through TCP connection */
+  delay(2000);
+  Serial.println("GET /update?api_key=NFA6X19JT0JP1GUG&field1=" + temprature + "&field2=" + PMA + "&field3=" + humidity + "\r\\n");
+  SIM800L.print("GET /update?api_key=NFA6X19JT0JP1GUG&field1=" + temprature + "&field2=" + PMA + "&field3=" + humidity + "\r\n\x1A"); /* URL for data to be sent to */
+  delay(11000);
+  Serial.println("AT+CIPSHUT");
+  SIM800L.println("AT+CIPSHUT"); /* Deactivate GPRS PDP content */
+  delay(3000);
+  digitalWrite(gsmEnPin,LOW);
+  delay(2000);
+  digitalWrite(gsmEnPin,HIGH);
+  delay(8000);
+  
+}
